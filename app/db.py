@@ -64,6 +64,71 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
         """
     )
+    # Wealth management tables
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT,
+            currency TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS portfolios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            base_currency TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            portfolio_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            symbol TEXT NOT NULL,
+            type TEXT NOT NULL, -- BUY, SELL, DIV, CASH, FX
+            qty REAL DEFAULT 0,
+            price REAL DEFAULT 0,
+            fees REAL DEFAULT 0,
+            currency TEXT,
+            notes TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (portfolio_id) REFERENCES portfolios(id) ON DELETE CASCADE
+        );
+        """
+    )
+    # Entry plans history
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS entry_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            horizon TEXT,
+            source TEXT,
+            notes TEXT,
+            images INTEGER DEFAULT 0,
+            text TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    # Prevent exact duplicate plans per symbol
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_entry_plans_symbol_text
+        ON entry_plans(symbol, text);
+        """
+    )
     conn.commit()
 
 
@@ -223,3 +288,157 @@ def get_price(
         """,
         (symbol, as_of, source),
     ).fetchone()
+
+
+# Wealth helpers
+def upsert_account(conn: sqlite3.Connection, *, id: Optional[int], name: str, type: Optional[str], currency: Optional[str]) -> int:
+    if id:
+        conn.execute("UPDATE accounts SET name=?, type=?, currency=?, updated_at=datetime('now') WHERE id=?", (name, type, currency, int(id)))
+        conn.commit(); return int(id)
+    cur = conn.execute("INSERT INTO accounts(name, type, currency) VALUES (?, ?, ?)", (name, type, currency))
+    conn.commit(); return int(cur.lastrowid or 0)
+
+
+def list_accounts(conn: sqlite3.Connection) -> List[Tuple[Any, ...]]:
+    return conn.execute("SELECT id, name, type, currency, created_at, updated_at FROM accounts ORDER BY id DESC").fetchall()
+
+
+def delete_account(conn: sqlite3.Connection, *, id: int) -> int:
+    cur = conn.execute("DELETE FROM accounts WHERE id=?", (int(id),)); conn.commit(); return cur.rowcount
+
+
+def upsert_portfolio(conn: sqlite3.Connection, *, id: Optional[int], name: str, base_currency: Optional[str]) -> int:
+    if id:
+        conn.execute("UPDATE portfolios SET name=?, base_currency=?, updated_at=datetime('now') WHERE id=?", (name, base_currency, int(id)))
+        conn.commit(); return int(id)
+    cur = conn.execute("INSERT INTO portfolios(name, base_currency) VALUES (?, ?)", (name, base_currency))
+    conn.commit(); return int(cur.lastrowid or 0)
+
+
+def list_portfolios(conn: sqlite3.Connection) -> List[Tuple[Any, ...]]:
+    return conn.execute("SELECT id, name, base_currency, created_at, updated_at FROM portfolios ORDER BY id DESC").fetchall()
+
+
+def delete_portfolio(conn: sqlite3.Connection, *, id: int) -> int:
+    cur = conn.execute("DELETE FROM portfolios WHERE id=?", (int(id),)); conn.commit(); return cur.rowcount
+
+
+def insert_transaction(
+    conn: sqlite3.Connection,
+    *,
+    portfolio_id: int,
+    date: str,
+    symbol: str,
+    type: str,
+    qty: float,
+    price: float,
+    fees: float,
+    currency: Optional[str],
+    notes: Optional[str],
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT INTO transactions(portfolio_id, date, symbol, type, qty, price, fees, currency, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (int(portfolio_id), date, symbol, type, float(qty), float(price), float(fees), currency, notes),
+    )
+    conn.commit(); return int(cur.lastrowid or 0)
+
+
+def list_transactions(conn: sqlite3.Connection, *, portfolio_id: int) -> List[Tuple[Any, ...]]:
+    return conn.execute(
+        "SELECT id, portfolio_id, date, symbol, type, qty, price, fees, currency, notes, created_at, updated_at FROM transactions WHERE portfolio_id=? ORDER BY date DESC, id DESC",
+        (int(portfolio_id),),
+    ).fetchall()
+
+
+def delete_transaction(conn: sqlite3.Connection, *, id: int) -> int:
+    cur = conn.execute("DELETE FROM transactions WHERE id=?", (int(id),)); conn.commit(); return cur.rowcount
+
+
+def get_latest_price(conn: sqlite3.Connection, *, symbol: str) -> Optional[float]:
+    row = conn.execute(
+        "SELECT price FROM prices WHERE symbol=? ORDER BY as_of DESC, id DESC LIMIT 1",
+        (symbol,),
+    ).fetchone()
+    return float(row[0]) if row else None
+
+
+def compute_positions(conn: sqlite3.Connection, *, portfolio_id: int) -> List[dict]:
+    rows = conn.execute(
+        "SELECT symbol, type, qty, price, fees FROM transactions WHERE portfolio_id=? ORDER BY date ASC, id ASC",
+        (int(portfolio_id),),
+    ).fetchall()
+    # Aggregate by symbol
+    agg: dict[str, dict] = {}
+    for symbol, typ, qty, price, fees in rows:
+        if symbol not in agg:
+            agg[symbol] = {"qty": 0.0, "cost": 0.0, "fees": 0.0, "buys": 0.0}
+        if typ.upper() == "BUY":
+            agg[symbol]["qty"] += float(qty)
+            agg[symbol]["cost"] += float(qty) * float(price)
+            agg[symbol]["fees"] += float(fees)
+            agg[symbol]["buys"] += float(qty)
+        elif typ.upper() == "SELL":
+            agg[symbol]["qty"] -= float(qty)
+            agg[symbol]["fees"] += float(fees)
+        # DIV/CASH/FX ignored in position qty
+    out = []
+    for sym, a in agg.items():
+        qty = a["qty"]
+        avg_cost = (a["cost"] / a["buys"]) if a["buys"] else 0.0
+        last = get_latest_price(conn, symbol=sym)
+        mkt = (last * qty) if (last is not None) else None
+        out.append({"symbol": sym, "qty": qty, "avg_cost": avg_cost, "last": last, "market_value": mkt})
+    return out
+
+
+# Entry plan helpers
+def insert_entry_plan(
+    conn: sqlite3.Connection,
+    *,
+    symbol: str,
+    text: str,
+    horizon: Optional[str] = None,
+    source: Optional[str] = None,
+    notes: Optional[str] = None,
+    images: Optional[int] = 0,
+) -> int:
+    cur = conn.execute(
+        """
+        INSERT OR IGNORE INTO entry_plans(symbol, text, horizon, source, notes, images)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (symbol, text, horizon, source, notes, int(images or 0)),
+    )
+    conn.commit(); return int(cur.lastrowid or 0)
+
+
+def list_entry_plans(
+    conn: sqlite3.Connection,
+    *,
+    symbol: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> List[Tuple[Any, ...]]:
+    if symbol:
+        return conn.execute(
+            """
+            SELECT id, symbol, text, horizon, source, notes, images, created_at
+            FROM entry_plans
+            WHERE symbol = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
+            (symbol, int(limit), int(offset)),
+        ).fetchall()
+    return conn.execute(
+        """
+        SELECT id, symbol, text, horizon, source, notes, images, created_at
+        FROM entry_plans
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+        """,
+        (int(limit), int(offset)),
+    ).fetchall()

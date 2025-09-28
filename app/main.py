@@ -6,7 +6,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.db import get_connection, init_db, list_prices, query_prices, get_price, upsert_journal, delete_journal, query_journal
+from app.db import (
+    get_connection, init_db, list_prices, query_prices, get_price,
+    upsert_journal, delete_journal, query_journal,
+    upsert_account, list_accounts, delete_account,
+    upsert_portfolio, list_portfolios, delete_portfolio,
+    insert_transaction, list_transactions, delete_transaction, compute_positions,
+    insert_entry_plan, list_entry_plans,
+)
 from dotenv import load_dotenv, find_dotenv
 import os
 
@@ -76,6 +83,7 @@ class InsightsRequest(BaseModel):
     symbol: str
     horizon: str = Field("daily", description="daily|weekly")
     notes: Optional[str] = None
+    images: Optional[List[str]] = Field(None, description="Optional list of data URLs (image/*) to include for vision analysis")
 
 
 class InsightsResponse(BaseModel):
@@ -84,6 +92,21 @@ class InsightsResponse(BaseModel):
 
 class InsightsStatus(BaseModel):
     enabled: bool
+
+
+class EntryPlan(BaseModel):
+    id: Optional[int] = None
+    symbol: str
+    horizon: Optional[str] = None
+    source: Optional[str] = None
+    notes: Optional[str] = None
+    images: Optional[int] = 0
+    text: str
+    created_at: Optional[str] = None
+
+
+class EntryPlanResponse(BaseModel):
+    items: List[EntryPlan]
 
 
 # Journal models
@@ -105,6 +128,63 @@ class JournalItem(BaseModel):
 
 class JournalResponse(BaseModel):
     items: list[JournalItem]
+
+
+# Wealth models
+class Account(BaseModel):
+    id: Optional[int] = None
+    name: str
+    type: Optional[str] = None
+    currency: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class AccountsResponse(BaseModel):
+    items: list[Account]
+
+
+class Portfolio(BaseModel):
+    id: Optional[int] = None
+    name: str
+    base_currency: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class PortfoliosResponse(BaseModel):
+    items: list[Portfolio]
+
+
+class Txn(BaseModel):
+    id: Optional[int] = None
+    portfolio_id: int
+    date: str
+    symbol: str
+    type: str
+    qty: float = 0.0
+    price: float = 0.0
+    fees: float = 0.0
+    currency: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TxnResponse(BaseModel):
+    items: list[Txn]
+
+
+class Position(BaseModel):
+    symbol: str
+    qty: float
+    avg_cost: float
+    last: Optional[float] = None
+    market_value: Optional[float] = None
+
+
+class PositionsResponse(BaseModel):
+    items: list[Position]
 
 
 @asynccontextmanager
@@ -156,6 +236,108 @@ def list_journal(
         (rid, s, d, dirn, q, e, st, x, f, tags, notes, ca, ua) = r
         items.append(JournalItem(id=rid, symbol=s, date=d, direction=dirn, qty=q, entry=e, stop=st, exit=x, fees=f, tags=tags, notes=notes, created_at=ca, updated_at=ua))
     return JournalResponse(items=items)
+
+
+# Wealth API
+@app.get("/accounts", response_model=AccountsResponse)
+def accounts_list():
+    with get_connection() as conn:
+        init_db(conn)
+        rows = list_accounts(conn)
+    items = [Account(id=r[0], name=r[1], type=r[2], currency=r[3], created_at=r[4], updated_at=r[5]) for r in rows]
+    return AccountsResponse(items=items)
+
+
+@app.post("/accounts", response_model=Account)
+def accounts_save(item: Account = Body(...)):
+    with get_connection() as conn:
+        init_db(conn)
+        rid = upsert_account(conn, id=item.id, name=item.name, type=item.type, currency=item.currency)
+        rows = list_accounts(conn)
+    for r in rows:
+        if r[0] == rid:
+            return Account(id=r[0], name=r[1], type=r[2], currency=r[3], created_at=r[4], updated_at=r[5])
+    raise HTTPException(status_code=500, detail="Saved account not found")
+
+
+@app.delete("/accounts/{rid}")
+def accounts_delete(rid: int):
+    with get_connection() as conn:
+        init_db(conn)
+        n = delete_account(conn, id=rid)
+    if n == 0:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"deleted": n}
+
+
+@app.get("/portfolios", response_model=PortfoliosResponse)
+def portfolios_list():
+    with get_connection() as conn:
+        init_db(conn)
+        rows = list_portfolios(conn)
+    items = [Portfolio(id=r[0], name=r[1], base_currency=r[2], created_at=r[3], updated_at=r[4]) for r in rows]
+    return PortfoliosResponse(items=items)
+
+
+@app.post("/portfolios", response_model=Portfolio)
+def portfolios_save(item: Portfolio = Body(...)):
+    with get_connection() as conn:
+        init_db(conn)
+        rid = upsert_portfolio(conn, id=item.id, name=item.name, base_currency=item.base_currency)
+        rows = list_portfolios(conn)
+    for r in rows:
+        if r[0] == rid:
+            return Portfolio(id=r[0], name=r[1], base_currency=r[2], created_at=r[3], updated_at=r[4])
+    raise HTTPException(status_code=500, detail="Saved portfolio not found")
+
+
+@app.delete("/portfolios/{rid}")
+def portfolios_delete(rid: int):
+    with get_connection() as conn:
+        init_db(conn)
+        n = delete_portfolio(conn, id=rid)
+    if n == 0:
+        raise HTTPException(status_code=404, detail="Portfolio not found")
+    return {"deleted": n}
+
+
+@app.get("/portfolios/{pid}/transactions", response_model=TxnResponse)
+def transactions_list(pid: int = 0):
+    with get_connection() as conn:
+        init_db(conn)
+        rows = list_transactions(conn, portfolio_id=pid)
+    items = [Txn(id=r[0], portfolio_id=r[1], date=r[2], symbol=r[3], type=r[4], qty=r[5], price=r[6], fees=r[7], currency=r[8], notes=r[9], created_at=r[10], updated_at=r[11]) for r in rows]
+    return TxnResponse(items=items)
+
+
+@app.post("/portfolios/{pid}/transactions", response_model=Txn)
+def transactions_add(pid: int, item: Txn = Body(...)):
+    with get_connection() as conn:
+        init_db(conn)
+        rid = insert_transaction(conn, portfolio_id=pid, date=item.date, symbol=item.symbol, type=item.type, qty=item.qty, price=item.price, fees=item.fees, currency=item.currency, notes=item.notes)
+        rows = list_transactions(conn, portfolio_id=pid)
+    for r in rows:
+        if r[0] == rid:
+            return Txn(id=r[0], portfolio_id=r[1], date=r[2], symbol=r[3], type=r[4], qty=r[5], price=r[6], fees=r[7], currency=r[8], notes=r[9], created_at=r[10], updated_at=r[11])
+    raise HTTPException(status_code=500, detail="Saved transaction not found")
+
+
+@app.delete("/transactions/{rid}")
+def transactions_delete(rid: int):
+    with get_connection() as conn:
+        init_db(conn)
+        n = delete_transaction(conn, id=rid)
+    if n == 0:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return {"deleted": n}
+
+
+@app.get("/portfolios/{pid}/positions", response_model=PositionsResponse)
+def positions_list(pid: int):
+    with get_connection() as conn:
+        init_db(conn)
+        items = [Position(**p) for p in compute_positions(conn, portfolio_id=pid)]
+    return PositionsResponse(items=items)
 
 
 @app.post("/journal", response_model=JournalItem)
@@ -346,7 +528,8 @@ def get_insights(payload: InsightsRequest = Body(...)):
     project = os.getenv("OPENAI_PROJECT_ID")
     prompt = f"Provide a {payload.horizon} view for {payload.symbol} with risks and potential trade setups. {payload.notes or ''}".strip()
     if not key:
-        return InsightsResponse(summary=("[Demo] " + prompt + "\n\nNote: Set OPENAI_API_KEY to enable live GPT insights."))
+        extra = "\n\n[Note] Vision inputs not processed in demo mode." if (payload.images and len(payload.images)>0) else ""
+        return InsightsResponse(summary=("[Demo] " + prompt + "\n\nNote: Set OPENAI_API_KEY to enable live GPT insights." + extra))
 
     try:
         headers = {
@@ -357,20 +540,26 @@ def get_insights(payload: InsightsRequest = Body(...)):
             headers["OpenAI-Organization"] = org
         if project:
             headers["OpenAI-Project"] = project
-        r = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": "You are an FX and commodities strategist. Be concise and actionable."},
-                    {"role": "user", "content": prompt},
-                ],
-                "temperature": 0.5,
-                "max_tokens": 1000,
-            },
-            timeout=20,
-        )
+
+        # Build a Chat Completions request; include images when provided
+        url = "https://api.openai.com/v1/chat/completions"
+        content = [{"type": "text", "text": prompt}]
+        imgs = payload.images or []
+        for u in imgs[:5]:  # cap to 5 images
+            try:
+                if isinstance(u, str) and u.startswith("data:image"):
+                    content.append({"type": "image_url", "image_url": {"url": u}})
+            except Exception:
+                pass
+        body = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": "You are an ICT trading mentor. Use ICT concepts (liquidity, displacement, PD arrays, OTE, FVG/OB, killzones) to craft concise, actionable plans."},
+                {"role": "user", "content": content},
+            ],
+            "temperature": 0.4,
+        }
+        r = requests.post(url, headers=headers, json=body, timeout=60)
         if r.status_code != 200:
             # Log a safe summary; do not log the API key
             try:
@@ -383,6 +572,7 @@ def get_insights(payload: InsightsRequest = Body(...)):
             raise HTTPException(status_code=502, detail=f"OpenAI error {r.status_code}: {msg}")
         body = r.json()
         txt = body["choices"][0]["message"]["content"].strip()
+        # Do not auto-persist here; the client saves entry plans explicitly after generation
         return InsightsResponse(summary=txt)
     except requests.RequestException as e:
         import traceback
@@ -394,3 +584,28 @@ def get_insights(payload: InsightsRequest = Body(...)):
 @app.get("/insights/status", response_model=InsightsStatus)
 def insights_status():
     return InsightsStatus(enabled=bool(os.getenv("OPENAI_API_KEY")))
+
+
+# Entry Plans API (persisted)
+@app.get("/entry_plans", response_model=EntryPlanResponse)
+def entry_plans_list(symbol: Optional[str] = Query(None), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0)):
+    with get_connection() as conn:
+        init_db(conn)
+        rows = list_entry_plans(conn, symbol=symbol, limit=limit, offset=offset)
+    items: List[EntryPlan] = []
+    for r in rows:
+        rid, sym, text, horizon, source, notes, images, created_at = r
+        items.append(EntryPlan(id=rid, symbol=sym, text=text, horizon=horizon, source=source, notes=notes, images=images, created_at=created_at))
+    return EntryPlanResponse(items=items)
+
+
+@app.post("/entry_plans", response_model=EntryPlan)
+def entry_plan_save(item: EntryPlan = Body(...)):
+    with get_connection() as conn:
+        init_db(conn)
+        rid = insert_entry_plan(conn, symbol=item.symbol, text=item.text, horizon=item.horizon, source=item.source, notes=item.notes, images=item.images or 0)
+        rows = list_entry_plans(conn, symbol=item.symbol, limit=1, offset=0)
+    if rows:
+        rid, sym, text, horizon, source, notes, images, created_at = rows[0]
+        return EntryPlan(id=rid, symbol=sym, text=text, horizon=horizon, source=source, notes=notes, images=images, created_at=created_at)
+    raise HTTPException(status_code=500, detail="Saved entry plan not found")

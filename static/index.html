@@ -14,6 +14,7 @@
         <ul class="navbar-nav ms-auto nav-pills minimal-tabs">
           <li class="nav-item"><button id="tab-dashboard-btn" class="nav-link active" type="button">Dashboard</button></li>
           <li class="nav-item"><button id="tab-journal-btn" class="nav-link" type="button">Journal</button></li>
+          <li class="nav-item"><button id="tab-wealth-btn" class="nav-link" type="button">Wealth</button></li>
         </ul>
       </div>
     </nav>
@@ -64,7 +65,7 @@
           </div>
         </section>
 
-        <!-- Quote + Ingest (optional) -->
+        <!-- Quote -->
         <section class="col-12 col-lg-8">
           <div class="card glass shadow-strong mb-4">
             <div class="card-header glass-header d-flex align-items-center gap-2">Last Quote <span class="small text-muted" id="selected-symbol">—</span></div>
@@ -72,63 +73,12 @@
               <div class="text-muted">Select a symbol</div>
             </div>
           </div>
-
-          <div class="card glass shadow-strong">
-            <div class="card-header glass-header">Ingest (Alpha Vantage)</div>
-            <div class="card-body">
-              <form id="ingest-form" class="row gy-2">
-                <div class="col-8">
-                  <label class="form-label" for="symbol">Symbol / Pair</label>
-                  <input class="form-control" id="symbol" placeholder="e.g., EURUSD or AAPL" />
-                </div>
-                <div class="col-4 d-flex align-items-end">
-                  <button id="ingest-btn" class="btn btn-primary w-100" type="submit">Ingest</button>
-                </div>
-              </form>
-              <div class="form-text mt-1">Supports FX pairs (EURUSD, XAUUSD) and stocks (AAPL, MSFT). Uses ALPHA_VANTAGE_API_KEY; provider may rate-limit requests.</div>
-              <div id="ingest-result" class="mt-2 small text-muted"></div>
-            </div>
-          </div>
         </section>
       </div>
 
-      <!-- Recent table -->
+      <!-- News and calendar -->
       <div class="row g-4 mt-1">
         <section class="col-12">
-          <div class="card glass shadow-strong mb-4">
-            <div class="card-header glass-header">Recent Prices</div>
-            <div class="card-body">
-              <div class="d-flex gap-2 align-items-end flex-wrap">
-                <div>
-                  <label class="form-label" for="filter-symbol">Filter by symbol</label>
-                  <input class="form-control" id="filter-symbol" placeholder="e.g., XAUUSD" />
-                </div>
-                <div>
-                  <label class="form-label" for="limit">Limit</label>
-                  <input class="form-control" id="limit" type="number" value="10" min="1" max="100" />
-                </div>
-              </div>
-              <div class="table-responsive mt-3">
-                <table class="table table-sm table-striped align-middle mb-0" id="prices-table">
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Price</th>
-                      <th>As Of</th>
-                      <th>Currency</th>
-                      <th>Source</th>
-                      <th>Created</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-              <div class="d-flex justify-content-between mt-3">
-                <button id="prev" class="btn btn-sm btn-outline-secondary" disabled>Prev</button>
-                <button id="next" class="btn btn-sm btn-outline-secondary" disabled>Next</button>
-              </div>
-            </div>
-          </div>
           <div class="row g-4 mt-1">
             <div class="col-12 col-lg-6">
               <div class="card glass shadow-strong h-100">
@@ -175,7 +125,23 @@
                   </div>
                 </div>
                 <div class="card-body">
+                  <div class="mb-2 d-flex flex-wrap gap-2 align-items-center">
+                    <label for="plan-images" class="form-label m-0 small">Screenshots</label>
+                    <input id="plan-images" class="form-control form-control-sm" type="file" accept="image/*" multiple style="max-width:280px" />
+                    <button id="plan-images-clear" class="btn btn-sm btn-outline-danger" type="button">Clear</button>
+                    <button id="plan-generate-vision" class="btn btn-sm btn-outline-info">Generate from screenshots (ICT)</button>
+                    <span class="text-muted small">Up to 5 images. Use marked-up charts for best results.</span>
+                  </div>
+                  <div id="plan-image-previews" class="d-flex flex-wrap gap-2 mb-3"></div>
                   <div id="entry-plan" class="small" style="white-space:pre-wrap"></div>
+                  <hr class="my-3" />
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="small text-muted">History</span>
+                    <button id="plan-history-refresh" class="btn btn-sm btn-outline-secondary">Refresh</button>
+                    <button id="plan-history-expand-all" class="btn btn-sm btn-outline-secondary">Expand all</button>
+                    <button id="plan-history-collapse-all" class="btn btn-sm btn-outline-secondary">Collapse all</button>
+                  </div>
+                  <ul id="entry-plan-history" class="list-group small"></ul>
                 </div>
               </div>
             </div>
@@ -184,7 +150,7 @@
       </div>
       </section>
 
-      <!-- Journal Tab -->
+  <!-- Journal Tab -->
       <section id="tab-journal" class="d-none">
         <h1 class="h3 mb-3 page-title text-center">Trade Journal</h1>
         <div class="row g-4">
@@ -341,9 +307,75 @@
           </div>
         </div>
       </section>
+
+      <!-- Wealth Tab -->
+      <section id="tab-wealth" class="d-none">
+        <h1 class="h3 mb-3 page-title text-center">Wealth Management</h1>
+        <div class="row g-4">
+          <div class="col-12 col-xl-4">
+            <div class="card glass minimal-card h-100">
+              <div class="card-header glass-header">Portfolios</div>
+              <div class="card-body">
+                <form id="wm-portfolio-form" class="row g-2">
+                  <input type="hidden" id="wm-portfolio-id" />
+                  <div class="col-7"><input class="form-control" id="wm-portfolio-name" placeholder="Name"/></div>
+                  <div class="col-5"><input class="form-control" id="wm-portfolio-base" placeholder="Base CCY (e.g., USD)"/></div>
+                  <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-primary" id="wm-portfolio-save" type="submit">Save</button>
+                  </div>
+                </form>
+                <ul id="wm-portfolio-list" class="list-unstyled mt-3 mb-0 small"></ul>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-xl-8">
+            <div class="card glass minimal-card">
+              <div class="card-header glass-header d-flex align-items-center gap-2">Transactions <span class="ms-auto small text-muted" id="wm-portfolio-caption">—</span></div>
+              <div class="card-body">
+                <form id="wm-txn-form" class="row g-2">
+                  <div class="col-3"><input class="form-control" id="wm-txn-date" type="date" /></div>
+                  <div class="col-2"><input class="form-control" id="wm-txn-symbol" placeholder="Symbol"/></div>
+                  <div class="col-2">
+                    <select id="wm-txn-type" class="form-select">
+                      <option value="BUY">BUY</option>
+                      <option value="SELL">SELL</option>
+                      <option value="DIV">DIV</option>
+                      <option value="CASH">CASH</option>
+                    </select>
+                  </div>
+                  <div class="col-2"><input class="form-control" id="wm-txn-qty" type="number" step="any" placeholder="Qty"/></div>
+                  <div class="col-2"><input class="form-control" id="wm-txn-price" type="number" step="any" placeholder="Price"/></div>
+                  <div class="col-1"><input class="form-control" id="wm-txn-fees" type="number" step="any" placeholder="Fees"/></div>
+                  <div class="col-12"><input class="form-control" id="wm-txn-notes" placeholder="Notes"/></div>
+                  <div class="col-12 d-flex gap-2"><button class="btn btn-primary" id="wm-txn-add" type="submit">Add</button></div>
+                </form>
+                <div class="table-responsive mt-3">
+                  <table class="table table-sm table-striped align-middle mb-0" id="wm-txn-table">
+                    <thead><tr><th>Date</th><th>Symbol</th><th>Type</th><th>Qty</th><th>Price</th><th>Fees</th><th></th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div class="card glass minimal-card mt-3">
+              <div class="card-header glass-header">Positions</div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped align-middle mb-0" id="wm-pos-table">
+                    <thead><tr><th>Symbol</th><th>Qty</th><th>Avg Cost</th><th>Last</th><th>Market Value</th></tr></thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
     </main>
 
-    <script src="/static/main.js"></script>
+  <!-- Vendor: Chart.js for Journal charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/static/main.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   </body>
 </html>
