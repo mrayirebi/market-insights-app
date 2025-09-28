@@ -82,6 +82,19 @@ curl -X POST http://127.0.0.1:8000/ingest/alpha_vantage -H "Content-Type: applic
 - Copy `.env.example` to `.env` if/when you add settings. `.env` is ignored by git.
 - See `.github/copilot-instructions.md` for agent guidelines and next steps for confirming the full architecture (data sources, storage, deployment).
 
+## Next.js Web UI (optional)
+A modern React frontend lives in `web/`. It uses Next.js + TailwindCSS + Framer Motion and talks to the FastAPI backend.
+
+Setup:
+```powershell
+cd web
+npm install
+copy .env.example .env
+npm run dev
+```
+Open http://localhost:3000 and ensure the API is running at http://localhost:8000 (configurable via `NEXT_PUBLIC_API_URL`).
+The backend enables CORS for http://localhost:3000 by default (override with `FRONTEND_ORIGIN`).
+
 ## UI quick tour
 - Dashboard
 	- Add a symbol or pick from presets (FX/metals). Selecting a symbol ingests FX quotes (if configured) and refreshes Last Quote, News, Macro Calendar, and Recent Prices.

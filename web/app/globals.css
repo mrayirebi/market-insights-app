@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0e14;
+}
+
+html, body, #__next { height: 100%; }
+body {
+  background: radial-gradient(1200px 800px at 20% 10%, rgba(29,78,216,0.15), transparent 50%),
+              radial-gradient(1000px 600px at 80% 20%, rgba(34,197,94,0.12), transparent 40%),
+              linear-gradient(180deg, #0b0e14, #0b0e14);
+  color: #e5e7eb;
+}
+
+.glass {
+  @apply bg-panel border border-white/10 rounded-2xl shadow-glass backdrop-blur-md;
+}
+
+

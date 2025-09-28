@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from typing import Optional, List
 
 from fastapi import FastAPI, Query, Body, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -212,6 +213,15 @@ app = FastAPI(title="Market Insights App", lifespan=lifespan)
 
 # Serve static frontend
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# CORS for local Next.js app (http://localhost:3000 by default)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", include_in_schema=False)
