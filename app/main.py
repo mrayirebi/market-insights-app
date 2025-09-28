@@ -3,7 +3,7 @@ from typing import Optional, List
 
 from fastapi import FastAPI, Query, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,7 @@ from app.db import (
     upsert_portfolio, list_portfolios, delete_portfolio,
     insert_transaction, list_transactions, delete_transaction, compute_positions,
     insert_entry_plan, list_entry_plans,
+    ensure_user, insert_email_code, verify_email_code, create_session, get_session, delete_session,
 )
 from dotenv import load_dotenv, find_dotenv
 import os
@@ -108,6 +109,15 @@ class EntryPlan(BaseModel):
 
 class EntryPlanResponse(BaseModel):
     items: List[EntryPlan]
+
+
+class EmailStartRequest(BaseModel):
+    email: str
+
+
+class EmailVerifyRequest(BaseModel):
+    email: str
+    code: str
 
 
 # Journal models
@@ -224,8 +234,43 @@ app.add_middleware(
 )
 
 
+def _get_session_email(token: Optional[str]) -> Optional[str]:
+    if not token:
+        return None
+    with get_connection() as conn:
+        init_db(conn)
+        row = get_session(conn, token=token)
+        if not row:
+            return None
+        tok, email, expires_at = row
+        # Check expiry
+        cur = conn.execute("SELECT datetime('now') < ?", (expires_at,))
+        if not bool(cur.fetchone()[0]):
+            delete_session(conn, token=token)
+            return None
+        return str(email)
+
+
 @app.get("/", include_in_schema=False)
-def home():
+def home(session: Optional[str] = Query(default=None)):
+    # Try cookie first; fallback to query param for limited environments
+    from fastapi import Request
+    # This hack allows both cookie and query param inspection without a dep injection signature change
+    # We'll read the cookie directly from the ASGI scope via a tiny request instance
+    try:
+        request = Request(scope={"type": "http", "headers": []})
+    except Exception:
+        request = None
+    cookie_token = None
+    if request is not None:
+        try:
+            cookie_token = request.cookies.get("session")
+        except Exception:
+            cookie_token = None
+    token = cookie_token or session
+    email = _get_session_email(token)
+    if not email:
+        return FileResponse("static/login.html")
     return FileResponse("static/index.html")
 
 
@@ -377,6 +422,67 @@ def delete_journal_row(rid: int):
 @app.get("/health", response_model=HealthResponse)
 def root():
     return {"status": "ok"}
+
+
+# ===== Email magic-code authentication =====
+@app.post("/auth/request_code")
+def auth_request_code(payload: EmailStartRequest = Body(...)):
+    import random
+    import string
+    email = payload.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    code = "".join(random.choice(string.digits) for _ in range(6))
+    with get_connection() as conn:
+        init_db(conn)
+        ensure_user(conn, email=email)
+        insert_email_code(conn, email=email, code=code, ttl_minutes=10)
+    # In real deployment: send via email provider. For dev, include it in response for convenience.
+    return {"ok": True, "dev_code": code}
+
+
+@app.post("/auth/verify_code")
+def auth_verify_code(payload: EmailVerifyRequest = Body(...)):
+    import secrets
+    email = payload.email.strip().lower()
+    code = payload.code.strip()
+    with get_connection() as conn:
+        init_db(conn)
+        if not verify_email_code(conn, email=email, code=code):
+            raise HTTPException(status_code=400, detail="Invalid or expired code")
+        token = secrets.token_urlsafe(32)
+        create_session(conn, email=email, token=token, ttl_days=7)
+    # Set cookie in a simple HTML response that redirects to /
+    html = """
+    <html><head><meta http-equiv='refresh' content='0; url=/'/></head><body>OK</body></html>
+    """
+    resp = HTMLResponse(content=html)
+    resp.set_cookie("session", token, httponly=True, samesite="lax", max_age=7*24*3600)
+    return resp
+
+
+@app.post("/auth/logout")
+def auth_logout(session: Optional[str] = Query(default=None)):
+    # accept cookie or query param for simplicity
+    from fastapi import Request
+    try:
+        request = Request(scope={"type": "http", "headers": []})
+    except Exception:
+        request = None
+    cookie_token = None
+    if request is not None:
+        try:
+            cookie_token = request.cookies.get("session")
+        except Exception:
+            cookie_token = None
+    token = cookie_token or session
+    if token:
+        with get_connection() as conn:
+            init_db(conn)
+            delete_session(conn, token=token)
+    resp = HTMLResponse(content="OK")
+    resp.delete_cookie("session")
+    return resp
 
 
 @app.get("/prices", response_model=PricesResponse)

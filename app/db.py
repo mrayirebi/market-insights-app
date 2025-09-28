@@ -129,6 +129,37 @@ def init_db(conn: sqlite3.Connection) -> None:
         ON entry_plans(symbol, text);
         """
     )
+    # Auth tables
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            email TEXT PRIMARY KEY,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS email_codes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS sessions (
+            token TEXT PRIMARY KEY,
+            email TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        );
+        """
+    )
     conn.commit()
 
 
@@ -442,3 +473,67 @@ def list_entry_plans(
         """,
         (int(limit), int(offset)),
     ).fetchall()
+
+# ===== Auth helpers =====
+def ensure_user(conn: sqlite3.Connection, *, email: str) -> None:
+    conn.execute("INSERT OR IGNORE INTO users(email) VALUES (?)", (email.lower(),))
+    conn.commit()
+
+
+def insert_email_code(conn: sqlite3.Connection, *, email: str, code: str, ttl_minutes: int = 10) -> int:
+    # expires_at = now + ttl
+    cur = conn.execute(
+        """
+        INSERT INTO email_codes(email, code, expires_at)
+        VALUES (?, ?, datetime('now', ?))
+        """,
+        (email.lower(), code, f"+{int(ttl_minutes)} minutes"),
+    )
+    conn.commit(); return int(cur.lastrowid or 0)
+
+
+def verify_email_code(conn: sqlite3.Connection, *, email: str, code: str) -> bool:
+    row = conn.execute(
+        """
+        SELECT id, expires_at, used FROM email_codes
+        WHERE email=? AND code=?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (email.lower(), code),
+    ).fetchone()
+    if not row:
+        return False
+    rid, expires_at, used = row
+    # Check expiry and not used
+    cur = conn.execute("SELECT datetime('now') < ?", (expires_at,))
+    still_valid = bool(cur.fetchone()[0])
+    if not still_valid or used:
+        return False
+    conn.execute("UPDATE email_codes SET used=1 WHERE id=?", (rid,))
+    conn.commit()
+    return True
+
+
+def create_session(conn: sqlite3.Connection, *, email: str, token: str, ttl_days: int = 7) -> None:
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO sessions(token, email, expires_at)
+        VALUES (?, ?, datetime('now', ?))
+        """,
+        (token, email.lower(), f"+{int(ttl_days)} days"),
+    )
+    conn.commit()
+
+
+def get_session(conn: sqlite3.Connection, *, token: str) -> Optional[Tuple[Any, ...]]:
+    return conn.execute(
+        """
+        SELECT token, email, expires_at FROM sessions WHERE token=? LIMIT 1
+        """,
+        (token,),
+    ).fetchone()
+
+
+def delete_session(conn: sqlite3.Connection, *, token: str) -> int:
+    cur = conn.execute("DELETE FROM sessions WHERE token=?", (token,))
+    conn.commit(); return cur.rowcount
