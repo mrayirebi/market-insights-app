@@ -82,6 +82,29 @@ curl -X POST http://127.0.0.1:8000/ingest/alpha_vantage -H "Content-Type: applic
 - Copy `.env.example` to `.env` if/when you add settings. `.env` is ignored by git.
 - See `.github/copilot-instructions.md` for agent guidelines and next steps for confirming the full architecture (data sources, storage, deployment).
 
+## Authentication
+This app supports email magic-code sign-in.
+
+Endpoints:
+- `POST /auth/request_code` — request a 6-digit code (10 min TTL). If SMTP is configured (see below), it sends an email. Otherwise, the code is logged in server logs and included in the response under `dev_code`.
+- `POST /auth/verify_code` — verify code and set a `session` cookie (7 days).
+- `POST /auth/logout` — deletes session and clears cookie.
+
+Configure SMTP (.env):
+```
+SMTP_HOST=<smtp_host>
+SMTP_PORT=587
+SMTP_USER=<user>
+SMTP_PASS=<pass>
+SMTP_FROM=no-reply@example.com
+SMTP_TLS=true
+```
+
+Troubleshooting:
+- If you’re not getting the email, check server logs; in dev mode the response includes `dev_code` for convenience.
+- Some providers require application-specific passwords (e.g., Gmail) or allow-listing sender.
+- Ensure firewall allows outbound TCP to your SMTP host/port.
+
 ## Next.js Web UI (optional)
 A modern React frontend lives in `web/`. It uses Next.js + TailwindCSS + Framer Motion and talks to the FastAPI backend.
 

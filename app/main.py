@@ -429,6 +429,10 @@ def root():
 def auth_request_code(payload: EmailStartRequest = Body(...)):
     import random
     import string
+    import os
+    import logging
+    import smtplib
+    from email.message import EmailMessage
     email = payload.email.strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Invalid email")
@@ -437,8 +441,43 @@ def auth_request_code(payload: EmailStartRequest = Body(...)):
         init_db(conn)
         ensure_user(conn, email=email)
         insert_email_code(conn, email=email, code=code, ttl_minutes=10)
-    # In real deployment: send via email provider. For dev, include it in response for convenience.
-    return {"ok": True, "dev_code": code}
+    # Try to send email via SMTP if configured
+    host = os.getenv("SMTP_HOST"); port = int(os.getenv("SMTP_PORT") or 587)
+    user = os.getenv("SMTP_USER"); pwd = os.getenv("SMTP_PASS")
+    sender = os.getenv("SMTP_FROM") or "no-reply@localhost"
+    use_tls = str(os.getenv("SMTP_TLS", "true")).lower() in ("1","true","yes","on")
+    sent = False; error = None
+    if host and sender:
+        try:
+            msg = EmailMessage()
+            msg["Subject"] = "Your Market Insights sign-in code"
+            msg["From"] = sender
+            msg["To"] = email
+            msg.set_content(f"Your sign-in code is: {code}\n\nThis code expires in 10 minutes.")
+            if use_tls:
+                with smtplib.SMTP(host, port, timeout=20) as s:
+                    s.starttls()
+                    if user and pwd:
+                        s.login(user, pwd)
+                    s.send_message(msg)
+            else:
+                with smtplib.SMTP(host, port, timeout=20) as s:
+                    if user and pwd:
+                        s.login(user, pwd)
+                    s.send_message(msg)
+            sent = True
+        except Exception as e:
+            error = str(e)
+            logging.warning("[auth] SMTP send failed: %s", error)
+    if not sent:
+        logging.info("[auth] Dev mode: code for %s is %s", email, code)
+    # Return status; include dev_code only when not actually sent
+    out = {"ok": True, "sent": sent}
+    if not sent:
+        out["dev_code"] = code
+        if error:
+            out["error"] = "smtp_failed"
+    return out
 
 
 @app.post("/auth/verify_code")
