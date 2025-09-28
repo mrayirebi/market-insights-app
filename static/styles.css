@@ -1,0 +1,70 @@
+body{min-height:100vh; background: radial-gradient(1200px 800px at 20% -10%, #111 0, #0b0b0b 35%, #050505 70%, #000 100%) fixed;}
+
+/* Glassmorphism */
+.glass{background: rgba(255,255,255,0.06); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 10px 30px rgba(0,0,0,.4);}
+.glass-header{background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)); border-bottom: 1px solid rgba(255,255,255,0.08);}
+
+.navbar{box-shadow:0 6px 20px rgba(0,0,0,.6)}
+.navbar, .navbar *{text-shadow: 0 1px 0 rgba(0,0,0,.4)}
+.navbar .navbar-brand.brand-lg{font-size:1.5rem; font-weight:600; letter-spacing:.4px;}
+.navbar .brand-center{margin: 0 auto; position: absolute; left: 50%; transform: translateX(-50%);} 
+.navbar .nav-pills{position: relative; z-index: 2;}
+.card{border:0}
+.card.glass{border-radius: 14px}
+.card-header{font-weight:500}
+.card-header.glass-header{border-top-left-radius:14px; border-top-right-radius:14px}
+
+/* Table tweaks for dark mode */
+#prices-table td, #prices-table th{white-space:nowrap}
+#prices-table tbody tr:hover{background: rgba(255,255,255,0.06)}
+table.table thead th{color:#cfd8dc}
+table.table td{color:#e6e6e6}
+
+/* Accent colors for price deltas */
+.price-up{color:#4cc9f0}
+.price-down{color:#ff6b6b}
+
+/* Utility */
+.shadow-strong{box-shadow: 0 20px 60px rgba(0,0,0,.6)}
+
+/* Watchlist */
+.watchlist-scroll{max-height: 420px; overflow:auto}
+.watchlist .list-group-item{background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius:10px; margin:6px 0; padding:10px 12px}
+.watchlist .list-group-item:hover{background: rgba(255,255,255,0.07)}
+.watchlist .list-group-item.active{background: rgba(76,201,240,0.15); border-color: rgba(76,201,240,0.35)}
+.watchlist .symbol{font-weight:600; letter-spacing:.5px}
+.watchlist .price{font-variant-numeric: tabular-nums;}
+.watchlist .delta{font-size:.85rem}
+.watchlist .drag{cursor:grab; opacity:.8}
+
+/* News impact chips */
+.impact-chip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:.75rem; margin-right:6px}
+.impact-low{background: rgba(108,117,125,.25); color:#adb5bd; border:1px solid rgba(108,117,125,.35)}
+.impact-medium{background: rgba(255,193,7,.2); color:#ffda6a; border:1px solid rgba(255,193,7,.35)}
+.impact-high{background: rgba(220,53,69,.2); color:#ff8fa3; border:1px solid rgba(220,53,69,.35)}
+.news-item{border-left:3px solid transparent; padding-left:8px}
+.news-item.high{border-left-color:#ff6b6b}
+.news-item.medium{border-left-color:#ffda6a}
+.news-item.low{border-left-color:#6c757d}
+
+/* Timezone chips */
+.tz-chip{display:inline-block; padding:2px 8px; border-radius:999px; font-size:.75rem; margin-left:6px; border:1px solid transparent}
+.tz-pdt{background: rgba(13,110,253,.15); color:#9ec5fe; border-color: rgba(13,110,253,.35)}
+.tz-est{background: rgba(25,135,84,.15); color:#9fe2b0; border-color: rgba(25,135,84,.35)}
+
+/* Minimalist look tweaks */
+.minimal-tabs .nav-link{border-radius:999px; padding:.35rem .9rem}
+.minimal-tabs .nav-link.active{background: rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.18)}
+.minimal-card{border-radius:14px}
+.stat .h4{font-weight:600}
+
+/* Journal table compactness */
+#j-trades-table th, #j-trades-table td{white-space:nowrap}
+
+/* Lightweight centered page title */
+.page-title{
+	font-weight: 500;
+	letter-spacing: 0.4px;
+	color: #e9ecef;
+	text-shadow: 0 1px 0 rgba(0,0,0,.35);
+}

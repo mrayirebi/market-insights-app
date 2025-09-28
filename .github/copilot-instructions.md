@@ -1,66 +1,46 @@
-# Copilot Instructions for Market Insights App
+# Copilot Instructions — Market Insights App
 
-## Project Overview
-This is an automated market insights application that provides data ingestion, AI summaries, alerts, and dashboards for financial market analysis.
+Purpose: automated market insights (ingestion, AI summaries, alerts, dashboards).
+Current stack: Python 3.11, FastAPI, SQLite, pytest. CI via GitHub Actions.
 
-## Key Guidelines
+## Layout (key files)
+- `app/main.py` FastAPI app: `/health`, `/prices`, `/prices/{symbol}`, `POST /ingest/alpha_vantage`
+- `app/db.py` SQLite helpers (schema: `prices` with unique (symbol, as_of, source))
+- `ingest/alpha_vantage.py` Ingestes Global Quote and persists to SQLite
+- `ingest/yahoo.py` Demo-only fetcher (not used in CI)
+- `tests/` pytest suite; `pytest.ini` sets `pythonpath=.`
+- `.github/workflows/ci.yml` CI on Windows/Ubuntu with Python 3.11
 
-### Architecture & Design
-- Follow clean architecture principles with clear separation of concerns
-- Use dependency injection for better testability and maintainability
-- Implement proper error handling and logging throughout the application
-- Design for scalability to handle large volumes of market data
+## Dev workflow (PowerShell)
+- Create venv and install: `python -m venv .venv; .\.venv\Scripts\Activate.ps1; pip install -r requirements.txt`
+- Run tests: `pytest -q`
+- Run API: `uvicorn app.main:app --reload --port 8000`
 
-### Data Handling
-- Ensure data integrity and validation for financial data
-- Implement proper data sanitization for external market data sources
-- Use appropriate data structures for time-series market data
-- Handle edge cases like market holidays, missing data, and data delays
+## Config and data
+- Env vars: `ALPHA_VANTAGE_API_KEY` (for ingest), optional `DB_PATH` (defaults to `./data/market.db`)
+- `.env` is NOT auto-loaded; set env in shell or configure in hosting. `.env.example` provided.
+- DB schema created on app startup; `app/print_prices.py` prints last rows.
 
-### AI/ML Components
-- Document AI model assumptions and limitations
-- Implement proper model versioning and deployment strategies
-- Ensure reproducible results where possible
-- Add proper monitoring for model performance and data drift
+## API patterns
+- GET `/prices?limit=&symbol=&start=&end=` returns `{ items:[...], count }` (ISO8601 strings for `as_of`)
+- GET `/prices/{symbol}` mirrors `/prices` but scoped to a symbol
+- POST `/ingest/alpha_vantage` body `{ symbol, api_key? }`; uses env key if body key omitted; persists one row
+- Response models use Pydantic; ingest response’s `created_at` is not read back from DB (blank in response) — query `/prices` to see persisted metadata
 
-### Security & Compliance
-- Never commit API keys, credentials, or sensitive configuration
-- Implement proper authentication and authorization
-- Follow financial data handling compliance requirements
-- Use environment variables for sensitive configuration
+## Testing
+- Network calls are mocked (e.g., Alpha Vantage) with `monkeypatch`
+- SQLite in-memory or temp-file DBs used in tests; set `DB_PATH` via env
+- Pytest config ensures `app/` and `ingest/` are importable from repo root
 
-### Code Quality
-- Write comprehensive unit tests for business logic
-- Include integration tests for external data sources
-- Use meaningful commit messages following conventional commits
-- Add inline documentation for complex financial calculations
+## CI
+- Workflow: `.github/workflows/ci.yml` installs `requirements.txt` and runs `pytest -q` on push/PR to `main`
 
-### Performance
-- Optimize for real-time data processing where needed
-- Implement proper caching strategies for expensive operations
-- Consider async/await patterns for I/O operations
-- Monitor and profile performance-critical paths
+## Contribution rules
+- Keep PRs small and runnable; update `README.md` with any new commands
+- Don’t add dependencies or external services without confirming
+- No secrets in repo; extend `.env.example` and docs when config changes
 
-### API Design
-- Follow RESTful principles for API endpoints
-- Use appropriate HTTP status codes
-- Implement proper rate limiting for external APIs
-- Version APIs to maintain backward compatibility
-
-## Technology Stack Considerations
-- Use type hints and static analysis tools
-- Implement proper logging with structured formats
-- Use configuration management for different environments
-- Follow 12-factor app principles for deployment
-
-## Testing Strategy
-- Mock external data sources in tests
-- Test with realistic market data scenarios
-- Include tests for edge cases and error conditions
-- Maintain test data that reflects real market conditions
-
-## Documentation
-- Keep README updated with setup and usage instructions
-- Document API endpoints with examples
-- Explain configuration options and environment variables
-- Include troubleshooting guides for common issues
+## Next likely steps (confirm before implementing)
+- Periodic ingestion (scheduler or worker), additional data sources (Polygon/Twelve Data)
+- API filters/pagination, typed request/response models for new endpoints
+- Optional `.env` auto-load (propose `python-dotenv`) and typed settings

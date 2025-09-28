@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FX & Metals — Market Insights</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link href="/static/styles.css" rel="stylesheet" />
+  </head>
+  <body data-bs-theme="dark" class="bg-dark">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark glass shadow-strong">
+      <div class="container-fluid">
+        <a class="navbar-brand brand-center brand-lg" href="#">Market Insights</a>
+        <ul class="navbar-nav ms-auto nav-pills minimal-tabs">
+          <li class="nav-item"><button id="tab-dashboard-btn" class="nav-link active" type="button">Dashboard</button></li>
+          <li class="nav-item"><button id="tab-journal-btn" class="nav-link" type="button">Journal</button></li>
+        </ul>
+      </div>
+    </nav>
+
+    <main class="container py-4">
+      <!-- Dashboard Tab -->
+      <section id="tab-dashboard">
+      <div id="insights-alert" class="alert alert-warning d-none glass" role="alert">
+        GPT insights are disabled. Set OPENAI_API_KEY in your .env and restart the server, then click "Ask GPT".
+        <button type="button" class="btn-close float-end" aria-label="Close" id="insights-alert-close"></button>
+      </div>
+  <h1 class="h3 mb-3 page-title text-center">FX & Precious Metals Dashboard</h1>
+      <div class="row g-4">
+        <!-- Watchlist -->
+        <section class="col-12 col-lg-4">
+          <div class="card glass shadow-strong h-100">
+            <div class="card-header glass-header d-flex align-items-center justify-content-between">
+              <span>Watchlist</span>
+              <div class="form-check form-switch small">
+                <input class="form-check-input" type="checkbox" id="autorefresh" />
+                <label class="form-check-label" for="autorefresh">Auto</label>
+              </div>
+            </div>
+            <div class="card-body p-0 d-flex flex-column">
+              <div class="p-3">
+                <div class="row g-2 align-items-center">
+                  <div class="col-12">
+                    <div class="input-group">
+                      <input id="add-symbol" class="form-control" placeholder="Add symbol (e.g., EURUSD, XAUUSD)" />
+                      <button id="add-symbol-btn" class="btn btn-outline-primary">Add</button>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <div class="input-group">
+                      <select id="preset-symbol" class="form-select">
+                        <!-- options filled by JS -->
+                      </select>
+                      <button id="add-preset-btn" class="btn btn-outline-secondary">Add from list</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-text mt-2">Use the dropdown for majors/metals, or type your own. Drag to reorder; click to open.</div>
+              </div>
+              <div class="watchlist-scroll px-2 pb-2">
+                <ul id="watchlist" class="list-group list-group-flush small watchlist"></ul>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Quote + Ingest (optional) -->
+        <section class="col-12 col-lg-8">
+          <div class="card glass shadow-strong mb-4">
+            <div class="card-header glass-header d-flex align-items-center gap-2">Last Quote <span class="small text-muted" id="selected-symbol">—</span></div>
+            <div class="card-body" id="quote-card">
+              <div class="text-muted">Select a symbol</div>
+            </div>
+          </div>
+
+          <div class="card glass shadow-strong">
+            <div class="card-header glass-header">Ingest (Alpha Vantage)</div>
+            <div class="card-body">
+              <form id="ingest-form" class="row gy-2">
+                <div class="col-8">
+                  <label class="form-label" for="symbol">Symbol / Pair</label>
+                  <input class="form-control" id="symbol" placeholder="e.g., EURUSD or AAPL" />
+                </div>
+                <div class="col-4 d-flex align-items-end">
+                  <button id="ingest-btn" class="btn btn-primary w-100" type="submit">Ingest</button>
+                </div>
+              </form>
+              <div class="form-text mt-1">Supports FX pairs (EURUSD, XAUUSD) and stocks (AAPL, MSFT). Uses ALPHA_VANTAGE_API_KEY; provider may rate-limit requests.</div>
+              <div id="ingest-result" class="mt-2 small text-muted"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Recent table -->
+      <div class="row g-4 mt-1">
+        <section class="col-12">
+          <div class="card glass shadow-strong mb-4">
+            <div class="card-header glass-header">Recent Prices</div>
+            <div class="card-body">
+              <div class="d-flex gap-2 align-items-end flex-wrap">
+                <div>
+                  <label class="form-label" for="filter-symbol">Filter by symbol</label>
+                  <input class="form-control" id="filter-symbol" placeholder="e.g., XAUUSD" />
+                </div>
+                <div>
+                  <label class="form-label" for="limit">Limit</label>
+                  <input class="form-control" id="limit" type="number" value="10" min="1" max="100" />
+                </div>
+              </div>
+              <div class="table-responsive mt-3">
+                <table class="table table-sm table-striped align-middle mb-0" id="prices-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Price</th>
+                      <th>As Of</th>
+                      <th>Currency</th>
+                      <th>Source</th>
+                      <th>Created</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="d-flex justify-content-between mt-3">
+                <button id="prev" class="btn btn-sm btn-outline-secondary" disabled>Prev</button>
+                <button id="next" class="btn btn-sm btn-outline-secondary" disabled>Next</button>
+              </div>
+            </div>
+          </div>
+          <div class="row g-4 mt-1">
+            <div class="col-12 col-lg-6">
+              <div class="card glass shadow-strong h-100">
+                <div class="card-header glass-header d-flex align-items-center">News <span class="small text-muted ms-2" id="news-caption"></span></div>
+                <div class="card-body">
+                  <ul id="news-list" class="list-unstyled small mb-0"></ul>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="card glass shadow-strong h-100">
+                <div class="card-header glass-header">Macro Calendar</div>
+                <div class="card-body">
+                  <ul id="calendar-list" class="list-unstyled small mb-0"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row g-4 mt-1">
+            <div class="col-12 col-lg-6">
+              <div class="card glass shadow-strong h-100">
+                <div class="card-header glass-header d-flex align-items-center gap-2">
+                  <span>Analyses</span>
+                  <div class="ms-auto d-flex gap-2 align-items-center">
+                    <select id="insights-horizon" class="form-select form-select-sm" style="width:auto">
+                      <option value="daily" selected>Daily</option>
+                      <option value="weekly">Weekly</option>
+                    </select>
+                    <button id="insights-refresh" class="btn btn-sm btn-outline-info">Ask GPT</button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div id="analysis-content" class="small text-body-emphasis" style="white-space:pre-wrap"></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-12 col-lg-6">
+              <div class="card glass shadow-strong h-100">
+                <div class="card-header glass-header d-flex align-items-center gap-2">
+                  <span>Entry Plan</span>
+                  <div class="ms-auto">
+                    <button id="plan-generate" class="btn btn-sm btn-outline-warning">Generate Plan</button>
+                  </div>
+                </div>
+                <div class="card-body">
+                  <div id="entry-plan" class="small" style="white-space:pre-wrap"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      </section>
+
+      <!-- Journal Tab -->
+      <section id="tab-journal" class="d-none">
+        <h1 class="h3 mb-3 page-title text-center">Trade Journal</h1>
+        <div class="row g-4">
+          <div class="col-12 col-lg-4">
+            <div class="card glass minimal-card">
+              <div class="card-header glass-header">Log a Trade</div>
+              <div class="card-body">
+                <form id="j-form" class="row g-3">
+                  <input type="hidden" id="j-id" />
+                  <div class="col-6">
+                    <label class="form-label" for="j-symbol">Symbol</label>
+                    <input class="form-control" id="j-symbol" placeholder="e.g., EURUSD" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-date">Date</label>
+                    <input class="form-control" id="j-date" type="datetime-local" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-direction">Direction</label>
+                    <select class="form-select" id="j-direction">
+                      <option value="Long">Long</option>
+                      <option value="Short">Short</option>
+                    </select>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-qty">Qty</label>
+                    <input class="form-control" id="j-qty" type="number" step="any" placeholder="e.g., 1.0" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-entry">Entry</label>
+                    <input class="form-control" id="j-entry" type="number" step="any" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-stop">Stop</label>
+                    <input class="form-control" id="j-stop" type="number" step="any" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-exit">Exit</label>
+                    <input class="form-control" id="j-exit" type="number" step="any" />
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label" for="j-fees">Fees</label>
+                    <input class="form-control" id="j-fees" type="number" step="any" value="0" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="j-tags">Tags</label>
+                    <input class="form-control" id="j-tags" placeholder="e.g., breakout, news, pullback" />
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label" for="j-notes">Notes</label>
+                    <textarea class="form-control" id="j-notes" rows="3" placeholder="What was the setup? What did you see?"></textarea>
+                  </div>
+                  <div class="col-12 d-flex gap-2">
+                    <button class="btn btn-primary" type="submit" id="j-save">Save</button>
+                    <button class="btn btn-outline-secondary" type="button" id="j-reset">Reset</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-8">
+            <div class="row g-3">
+              <div class="col-12">
+                <div class="card glass minimal-card">
+                  <div class="card-header glass-header d-flex align-items-center">Overview <div class="ms-auto small text-muted" id="j-overview-caption"></div></div>
+                  <div class="card-body">
+                    <div class="row text-center">
+                      <div class="col-6 col-md-3"><div class="stat"><div class="h4" id="j-stat-trades">0</div><div class="text-muted small">Trades</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="h4" id="j-stat-winrate">0%</div><div class="text-muted small">Win Rate</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="h4" id="j-stat-ravg">0.00</div><div class="text-muted small">Avg R</div></div></div>
+                      <div class="col-6 col-md-3"><div class="stat"><div class="h4" id="j-stat-pnl">0.00</div><div class="text-muted small">Total PnL</div></div></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12">
+                <div class="card glass minimal-card">
+                  <div class="card-header glass-header d-flex align-items-center gap-2">
+                    <span>AI Review</span>
+                    <div class="ms-auto d-flex gap-2 align-items-center flex-wrap">
+                      <label class="form-label m-0 small">Scope</label>
+                      <select id="j-ai-scope" class="form-select form-select-sm" style="width:auto">
+                        <option value="filtered">Filtered view</option>
+                        <option value="last20">Last 20 trades</option>
+                        <option value="all">All trades</option>
+                      </select>
+                      <button id="j-ai-run" class="btn btn-sm btn-outline-info">Analyze Journal</button>
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <div class="mb-2">
+                      <label class="form-label small" for="j-ai-notes">Focus (optional)</label>
+                      <input class="form-control" id="j-ai-notes" placeholder="e.g., help me reduce overtrading and improve risk discipline" />
+                    </div>
+                    <div id="j-ai-output" class="small" style="white-space:pre-wrap"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="col-12 col-xl-6">
+                <div class="card glass minimal-card h-100">
+                  <div class="card-header glass-header">Equity Curve</div>
+                  <div class="card-body"><canvas id="equity-chart" height="140"></canvas></div>
+                </div>
+              </div>
+              <div class="col-12 col-xl-6">
+                <div class="card glass minimal-card h-100">
+                  <div class="card-header glass-header">PnL Distribution</div>
+                  <div class="card-body"><canvas id="pnl-hist-chart" height="140"></canvas></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card glass minimal-card mt-4">
+          <div class="card-header glass-header d-flex align-items-center gap-2">
+            <span>Trades</span>
+            <div class="ms-auto d-flex gap-2 flex-wrap">
+              <input class="form-control form-control-sm" id="j-filter-symbol" placeholder="Symbol" style="width:110px" />
+              <select class="form-select form-select-sm" id="j-filter-dir" style="width:110px">
+                <option value="">All</option>
+                <option value="Long">Long</option>
+                <option value="Short">Short</option>
+              </select>
+              <input class="form-control form-control-sm" id="j-filter-start" type="date" />
+              <input class="form-control form-control-sm" id="j-filter-end" type="date" />
+              <input class="form-control form-control-sm" id="j-filter-tag" placeholder="Tag" style="width:120px" />
+              <button class="btn btn-sm btn-outline-secondary" id="j-export">Export</button>
+              <label class="btn btn-sm btn-outline-secondary mb-0">
+                Import <input id="j-import" type="file" accept="application/json" hidden />
+              </label>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle mb-0" id="j-trades-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Symbol</th>
+                    <th>Dir</th>
+                    <th>Entry</th>
+                    <th>Stop</th>
+                    <th>Exit</th>
+                    <th>Qty</th>
+                    <th>PnL</th>
+                    <th>R</th>
+                    <th>Tags</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/main.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
