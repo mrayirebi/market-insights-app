@@ -107,9 +107,13 @@
       li.className = `mb-2 news-item ${impact}`;
       const tz = formatTimezones(n.published_at);
       const date = formatDateISO(n.published_at);
+      // Fallback: if API doesn't include a real URL, open a Google News search for the title (and symbol if present)
+      const href = (n.url && n.url !== '#')
+        ? n.url
+        : `https://news.google.com/search?q=${encodeURIComponent((n.title||'') + (symbol?` ${symbol}`:''))}&hl=en-US&gl=US&ceid=US:en`;
       li.innerHTML = `
         <span class="impact-chip ${chipClass}">${n.impact||'Low'}</span>
-        <a href="${n.url}" target="_blank" class="link-info">${n.title}</a>
+        <a href="${href}" target="_blank" rel="noopener noreferrer" class="link-info">${n.title}</a>
         <span class="text-muted">${n.source||''}</span>
         ${date ? `<span class="tz-chip tz-date">${date}</span>` : ''}
         ${tz ? `<span class="tz-chip tz-pdt">PDT ${tz.pdt}</span><span class="tz-chip tz-est">EST ${tz.est}</span>` : ''}
